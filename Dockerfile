@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     python3.12-venv \
     git \
     wget \
+    curl \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
@@ -67,6 +68,37 @@ WORKDIR /comfyui
 # Support for the network volume
 ADD src/extra_model_paths.yaml ./
 
+# Ensure custom-node installer is available before we try to use it
+COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
+RUN chmod +x /usr/local/bin/comfy-node-install
+
+# Install required custom nodes used by provided workflows.
+# First try via comfy-node-install (preferred, installs dependencies).
+# If registry names are not found, fall back to manual git clones and install requirements.
+RUN set -eux; \
+    if ! comfy-node-install ComfyUI-Impact-Pack ComfyUI_Comfyroll_CustomNodes ComfyUI-Custom-Scripts; then \
+      echo "Falling back to manual clone of custom nodes"; \
+      mkdir -p /comfyui/custom_nodes; \
+      # Impact Pack
+      if [ ! -d /comfyui/custom_nodes/ComfyUI-Impact-Pack ]; then \
+        git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack /comfyui/custom_nodes/ComfyUI-Impact-Pack || true; \
+      fi; \
+      # Comfyroll Custom Nodes
+      if [ ! -d /comfyui/custom_nodes/ComfyUI_Comfyroll_CustomNodes ]; then \
+        git clone --depth=1 https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes /comfyui/custom_nodes/ComfyUI_Comfyroll_CustomNodes || true; \
+      fi; \
+      # pysssss Custom Scripts
+      if [ ! -d /comfyui/custom_nodes/ComfyUI-Custom-Scripts ]; then \
+        git clone --depth=1 https://github.com/pythongosssss/ComfyUI-Custom-Scripts /comfyui/custom_nodes/ComfyUI-Custom-Scripts || true; \
+      fi; \
+      # Install any requirements if present
+      for d in /comfyui/custom_nodes/*; do \
+        if [ -f "$d/requirements.txt" ]; then \
+          uv pip install -r "$d/requirements.txt" || true; \
+        fi; \
+      done; \
+    fi
+
 # Go back to the root
 WORKDIR /
 
@@ -75,11 +107,8 @@ RUN uv pip install runpod requests websocket-client
 
 # Add application code and scripts
 ADD src/start.sh handler.py test_input.json ./
-RUN chmod +x /start.sh
-
-# Add script to install custom nodes
-COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
-RUN chmod +x /usr/local/bin/comfy-node-install
+ADD src/download_models.sh ./
+RUN chmod +x /start.sh /download_models.sh
 
 # Prevent pip from asking for confirmation during uninstall steps in custom nodes
 ENV PIP_NO_INPUT=1

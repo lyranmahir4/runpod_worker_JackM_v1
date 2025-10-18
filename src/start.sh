@@ -9,6 +9,11 @@ comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-M
 
 echo "worker-comfyui: Starting ComfyUI"
 
+# Attempt to download required models (Pony checkpoint + LoRA) into the
+# Network Volume at /runpod-volume if available; otherwise into /comfyui/models.
+# Uses CIVITAI_TOKEN if set. Safe to fail without stopping the worker.
+/download_models.sh || echo "worker-comfyui: download_models.sh failed or skipped" >&2
+
 # Allow operators to tweak verbosity; default is DEBUG.
 : "${COMFY_LOG_LEVEL:=DEBUG}"
 
